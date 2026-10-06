@@ -1,0 +1,411 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Raster-Schnitt</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Raster-Schnitt">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧩</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<style>
+:root{
+  --bg:#E8ECEA; --surface:#F8FAF9; --ink:#15191C; --muted:#56616A; --line:#C7D0CC;
+  --accent:#3346D3; --accent-ink:#FFFFFF; --soft:#DCE2F9; --warn:#9A5B00;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#111416; --surface:#1A1E21; --ink:#ECF0EE; --muted:#9BA6AE; --line:#2D3438;
+    --accent:#8E9BFF; --accent-ink:#0D1033; --soft:#252B4A; --warn:#F2B35B;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#111416; --surface:#1A1E21; --ink:#ECF0EE; --muted:#9BA6AE; --line:#2D3438;
+  --accent:#8E9BFF; --accent-ink:#0D1033; --soft:#252B4A; --warn:#F2B35B;
+}
+*,*::before,*::after{box-sizing:inherit}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font-family:"Bricolage Grotesque",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  font-size:16px;line-height:1.45;-webkit-font-smoothing:antialiased}
+button,input{font:inherit;color:inherit}
+:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.app{max-width:1180px;margin:0 auto;padding:20px 16px 40px;display:grid;gap:20px}
+@media (min-width:900px){.app{grid-template-columns:1fr 360px;align-items:start;padding:32px 24px 56px}}
+.top{grid-column:1/-1}
+.top h1{font-size:clamp(28px,5vw,44px);font-weight:800;letter-spacing:-.02em;line-height:1;margin:0 0 6px}
+.top p{margin:0;color:var(--muted);max-width:60ch}
+.stage{background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:14px;min-height:300px;display:flex;flex-direction:column;align-items:center;justify-content:center}
+@media (min-width:900px){.stage{position:sticky;top:calc(16px + env(safe-area-inset-top,0px))}}
+.empty{text-align:center;padding:40px 16px;border:2px dashed var(--line);border-radius:14px;width:100%}
+.empty.over{border-color:var(--accent);background:var(--soft)}
+.empty p{color:var(--muted);margin:10px 0 0}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;border:1px solid var(--line);background:var(--surface);border-radius:10px;padding:10px 14px;cursor:pointer;font-weight:600;min-height:44px}
+.btn:hover{border-color:var(--ink)}
+.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);width:100%;font-size:17px}
+.btn.primary:hover{filter:brightness(1.08)}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn.small{min-height:36px;padding:6px 12px;font-size:14px}
+.canvasWrap{width:100%;display:flex;flex-direction:column;align-items:center;gap:10px}
+.bar{width:100%;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
+.seg{display:inline-flex;background:var(--bg);border-radius:10px;padding:3px;gap:2px}
+.seg button{border:0;background:transparent;border-radius:8px;padding:7px 12px;cursor:pointer;font-weight:600;font-size:14px;color:var(--muted);min-height:36px}
+.seg button[aria-pressed="true"]{background:var(--surface);color:var(--ink);box-shadow:0 0 0 1px var(--line)}
+canvas{display:block;touch-action:none;border-radius:4px;max-width:100%}
+canvas.grab{cursor:grab}
+canvas.grab:active{cursor:grabbing}
+.hint{margin:0;color:var(--muted);font-size:14px;text-align:center}
+.panel{display:grid;gap:14px}
+.group{background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:16px}
+.group h2{font-size:17px;font-weight:800;margin:0 0 12px;letter-spacing:-.01em}
+.group .note{font-size:14px;color:var(--muted);margin:10px 0 0}
+.presets{display:grid;grid-template-columns:repeat(6,1fr);gap:6px}
+.preset{border:1px solid var(--line);background:transparent;border-radius:10px;padding:8px 4px 6px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:5px;font-size:13px;font-weight:600}
+.preset[aria-pressed="true"]{border-color:var(--accent);background:var(--soft)}
+.mini{display:grid;grid-template-columns:repeat(3,7px);gap:2px}
+.mini i{width:7px;height:7px;border-radius:1.5px;background:var(--line)}
+.mini i.on{background:var(--ink)}
+.preset[aria-pressed="true"] .mini i.on{background:var(--accent)}
+.steppers{display:flex;gap:14px;margin-top:12px;flex-wrap:wrap}
+.stepper{display:flex;align-items:center;gap:8px}
+.stepper span.lbl{font-size:14px;color:var(--muted);min-width:56px}
+.stepper button{width:36px;height:36px;border-radius:9px;border:1px solid var(--line);background:transparent;cursor:pointer;font-size:18px;font-weight:600}
+.stepper output{min-width:18px;text-align:center;font-weight:800;font-size:18px}
+.fmt{display:grid;gap:6px}
+.fmt button{display:flex;justify-content:space-between;align-items:center;text-align:left;border:1px solid var(--line);background:transparent;border-radius:10px;padding:10px 12px;cursor:pointer;min-height:44px}
+.fmt button[aria-pressed="true"]{border-color:var(--accent);background:var(--soft)}
+.fmt b{font-weight:800}
+.fmt small{color:var(--muted);font-size:13px}
+input[type=range]{width:100%;accent-color:var(--accent);height:32px}
+.warn{color:var(--warn);font-size:14px;margin:10px 0 0}
+.out ol{list-style:none;padding:0;margin:12px 0 0;display:grid;gap:8px}
+.out li{display:grid;grid-template-columns:28px 56px 1fr auto;align-items:center;gap:10px;padding:6px;border-radius:12px;border:1px solid var(--line)}
+.out li.filler{grid-template-columns:28px 1fr;border-style:dashed;color:var(--muted);font-size:14px;padding:10px 6px}
+.out .num{font-weight:800;font-size:18px;text-align:center}
+.out li:first-child .num{color:var(--accent)}
+.out img{width:56px;height:auto;border-radius:6px;display:block;-webkit-touch-callout:default}
+.out .meta{font-size:14px;line-height:1.3}
+.out .meta small{color:var(--muted);display:block}
+.status{font-size:14px;color:var(--muted);min-height:1.3em;margin:10px 0 0}
+.row{display:flex;gap:8px;flex-wrap:wrap}
+[hidden]{display:none!important}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<main class="app">
+  <header class="top">
+    <h1>Raster-Schnitt</h1>
+    <p>Ein Bild in mehrere Posts teilen, die im Instagram-Profil zusammen ein Ganzes ergeben. Ohne Logo, alles bleibt auf deinem Gerät.</p>
+  </header>
+
+  <section class="stage" id="stage">
+    <div class="empty" id="empty">
+      <button class="btn primary" id="pick" style="width:auto;padding:12px 22px">Bild auswählen</button>
+      <p>oder hierher ziehen</p>
+    </div>
+    <div class="canvasWrap" id="wrap" hidden>
+      <div class="bar">
+        <div class="seg" role="group" aria-label="Ansicht">
+          <button data-view="edit" aria-pressed="true">Ausschnitt</button>
+          <button data-view="profile" aria-pressed="false">Profil-Vorschau</button>
+        </div>
+        <button class="btn small" id="repick">Anderes Bild</button>
+      </div>
+      <canvas id="cv" aria-label="Vorschau des Rasters"></canvas>
+      <p class="hint" id="hint"></p>
+    </div>
+    <input type="file" id="file" accept="image/*" hidden>
+  </section>
+
+  <div class="panel">
+    <div class="group">
+      <h2>Raster</h2>
+      <div class="presets" id="presets"></div>
+      <div class="steppers">
+        <div class="stepper"><span class="lbl">Spalten</span><button data-step="cols" data-d="-1" aria-label="Spalte weniger">−</button><output id="colsOut">3</output><button data-step="cols" data-d="1" aria-label="Spalte mehr">+</button></div>
+        <div class="stepper"><span class="lbl">Reihen</span><button data-step="rows" data-d="-1" aria-label="Reihe weniger">−</button><output id="rowsOut">1</output><button data-step="rows" data-d="1" aria-label="Reihe mehr">+</button></div>
+      </div>
+      <p class="note" id="gridNote"></p>
+    </div>
+
+    <div class="group">
+      <h2>Format pro Post</h2>
+      <div class="fmt" id="fmt">
+        <button data-r="3:4" aria-pressed="true"><span><b>3:4 Hochformat</b><br><small>Passt exakt ins Profil-Raster</small></span><small>1080 × 1440</small></button>
+        <button data-r="4:5" aria-pressed="false"><span><b>4:5 Hochformat</b><br><small>Klassisch, Profil schneidet seitlich etwas ab</small></span><small>1080 × 1350</small></button>
+        <button data-r="1:1" aria-pressed="false"><span><b>1:1 Quadrat</b><br><small>Profil schneidet seitlich deutlich ab</small></span><small>1080 × 1080</small></button>
+      </div>
+    </div>
+
+    <div class="group">
+      <h2>Zoom</h2>
+      <input type="range" id="zoom" min="1" max="4" step="0.01" value="1" aria-label="Zoom">
+      <p class="note">Bild in der Vorschau ziehen, um den Ausschnitt zu verschieben.</p>
+    </div>
+
+    <div class="group">
+      <button class="btn primary" id="make" disabled>Kacheln erstellen</button>
+      <p class="warn" id="warn" hidden></p>
+    </div>
+
+    <div class="group out" id="out" hidden>
+      <h2>Posten in dieser Reihenfolge</h2>
+      <div class="row">
+        <button class="btn" id="zip">Alle als ZIP speichern</button>
+      </div>
+      <p class="status" id="status"></p>
+      <ol id="list"></ol>
+    </div>
+  </div>
+</main>
+
+<script>
+(function(){
+const RATIOS={"3:4":3/4,"4:5":4/5,"1:1":1};
+const PRESETS=[[3,4],[3,3],[3,2],[3,1],[2,2],[2,1]];
+let savedRatio="3:4";
+try{const v=localStorage.getItem("rs-ratio");if(v&&RATIOS[v])savedRatio=v;}catch(e){}
+const S={img:null,name:"bild",cols:3,rows:1,ratio:savedRatio,zoom:1,cx:.5,cy:.5,view:"edit",tiles:[]};
+const $=id=>document.getElementById(id);
+const cv=$("cv"),ctx=cv.getContext("2d");
+const dl=true;
+const coarse=matchMedia("(pointer:coarse)").matches;
+function download(name,blob){const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),5000);}
+async function shareOrDownload(name,blob){
+  const f=new File([blob],name,{type:blob.type||"application/octet-stream"});
+  let can=false;try{can=coarse&&!!navigator.canShare&&navigator.canShare({files:[f]});}catch(e){}
+  if(can){try{await navigator.share({files:[f]});return "ok";}catch(e){if(e.name==="AbortError")return "abort";}}
+  download(name,blob);return "ok";
+}
+
+// Presets
+const pWrap=$("presets");
+PRESETS.forEach(([c,r])=>{
+  const b=document.createElement("button");b.className="preset";b.dataset.c=c;b.dataset.r=r;
+  b.setAttribute("aria-label",c+" Spalten, "+r+" Reihen");
+  const m=document.createElement("span");m.className="mini";
+  for(let y=0;y<4;y++)for(let x=0;x<3;x++){const i=document.createElement("i");if(x<c&&y<r)i.className="on";m.appendChild(i);}
+  b.appendChild(m);b.appendChild(document.createTextNode(c+"×"+r));
+  b.onclick=()=>{S.cols=c;S.rows=r;changed();};
+  pWrap.appendChild(b);
+});
+document.querySelectorAll("[data-step]").forEach(b=>b.onclick=()=>{
+  const k=b.dataset.step,d=+b.dataset.d;
+  S[k]=Math.min(k==="cols"?3:5,Math.max(1,S[k]+d));changed();
+});
+document.querySelectorAll("#fmt button").forEach(b=>b.onclick=()=>{S.ratio=b.dataset.r;try{localStorage.setItem("rs-ratio",S.ratio);}catch(e){}changed();});
+document.querySelectorAll("[data-view]").forEach(b=>b.onclick=()=>{S.view=b.dataset.view;syncUI();draw();});
+$("zoom").oninput=e=>{S.zoom=+e.target.value;invalidate();draw();};
+
+// Datei laden
+const file=$("file");
+$("pick").onclick=()=>file.click();
+$("repick").onclick=()=>file.click();
+file.onchange=()=>{if(file.files[0])load(file.files[0]);file.value="";};
+const empty=$("empty");
+["dragenter","dragover"].forEach(ev=>$("stage").addEventListener(ev,e=>{e.preventDefault();empty.classList.add("over");}));
+["dragleave","drop"].forEach(ev=>$("stage").addEventListener(ev,e=>{e.preventDefault();empty.classList.remove("over");}));
+$("stage").addEventListener("drop",e=>{const f=e.dataTransfer&&e.dataTransfer.files[0];if(f&&f.type.startsWith("image/"))load(f);});
+
+function load(f){
+  const url=URL.createObjectURL(f);const img=new Image();
+  img.onload=()=>{
+    if(S.img&&S.img._url)URL.revokeObjectURL(S.img._url);
+    img._url=url;S.img=img;S.name=(f.name||"bild").replace(/\.[^.]+$/,"").replace(/[^\w\-]+/g,"-").slice(0,40)||"bild";
+    S.zoom=1;S.cx=.5;S.cy=.5;$("zoom").value=1;
+    empty.hidden=true;$("wrap").hidden=false;$("make").disabled=false;
+    changed();
+  };
+  img.onerror=()=>{alert("Dieses Bild konnte nicht geladen werden. Versuch es mit JPG oder PNG.");URL.revokeObjectURL(url);};
+  img.src=url;
+}
+
+// Feed-Logik: Positionen im 3-spaltigen Profil, neueste oben links
+function layout(){
+  const slots=[];// row-major positions in feed
+  for(let r=0;r<S.rows;r++)for(let c=0;c<3;c++){
+    if(c<S.cols)slots.push({type:"tile",r,c});
+    else slots.push({type:r<S.rows-1?"filler":"old",r,c});
+  }
+  // Reihenfolge: von der letzten neuen Position rückwärts
+  let last=slots.length-1;while(last>=0&&slots[last].type==="old")last--;
+  let n=0;for(let p=last;p>=0;p--){slots[p].order=++n;}
+  return slots;
+}
+
+function crop(){
+  const iw=S.img.naturalWidth,ih=S.img.naturalHeight;
+  const A=S.cols*RATIOS[S.ratio]/S.rows;
+  let bw,bh;if(iw/ih>A){bh=ih;bw=ih*A;}else{bw=iw;bh=iw/A;}
+  const w=bw/S.zoom,h=bh/S.zoom;
+  let cx=S.cx*iw,cy=S.cy*ih;
+  cx=Math.min(Math.max(cx,w/2),iw-w/2);cy=Math.min(Math.max(cy,h/2),ih-h/2);
+  S.cx=cx/iw;S.cy=cy/ih;
+  return{x:cx-w/2,y:cy-h/2,w,h};
+}
+
+function css(v){return getComputedStyle(document.documentElement).getPropertyValue(v).trim();}
+
+function sizeCanvas(aspect){
+  const wrapW=$("wrap").clientWidth||320;
+  const maxH=Math.min(window.innerHeight*0.62,760);
+  let w=Math.min(wrapW,maxH*aspect);const h=w/aspect;
+  const dpr=window.devicePixelRatio||1;
+  cv.style.width=w+"px";cv.style.height=h+"px";
+  cv.width=Math.round(w*dpr);cv.height=Math.round(h*dpr);
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  return{w,h};
+}
+
+function badge(x,y,n,first){
+  const r=Math.max(11,Math.min(16,cv.clientWidth/40));
+  ctx.beginPath();ctx.arc(x+r+6,y+r+6,r,0,Math.PI*2);
+  ctx.fillStyle=first?css("--accent"):"rgba(0,0,0,.62)";ctx.fill();
+  ctx.fillStyle=first?css("--accent-ink"):"#fff";
+  ctx.font="800 "+Math.round(r*1.05)+"px 'Bricolage Grotesque',system-ui,sans-serif";
+  ctx.textAlign="center";ctx.textBaseline="middle";ctx.fillText(n,x+r+6,y+r+7);
+}
+
+function draw(){
+  if(!S.img)return;
+  const c=crop(),slots=layout(),gap=3,surf=css("--surface");
+  if(S.view==="edit"){
+    const A=S.cols*RATIOS[S.ratio]/S.rows;const {w,h}=sizeCanvas(A);
+    ctx.clearRect(0,0,w,h);ctx.imageSmoothingQuality="high";
+    ctx.drawImage(S.img,c.x,c.y,c.w,c.h,0,0,w,h);
+    ctx.fillStyle=surf;
+    for(let i=1;i<S.cols;i++)ctx.fillRect(i*w/S.cols-gap/2,0,gap,h);
+    for(let j=1;j<S.rows;j++)ctx.fillRect(0,j*h/S.rows-gap/2,w,gap);
+    slots.filter(s=>s.type==="tile").forEach(s=>badge(s.c*w/S.cols,s.r*h/S.rows,s.order,s.order===1));
+    cv.classList.add("grab");
+  }else{
+    // Profil: immer 3 Spalten, Kacheln im 3:4-Raster (Instagram schneidet mittig zu)
+    const A=(3*0.75)/S.rows;const {w,h}=sizeCanvas(A);
+    const g=2,cw=(w-2*g)/3,ch=(h-(S.rows-1)*g)/S.rows;
+    ctx.clearRect(0,0,w,h);ctx.fillStyle=surf;ctx.fillRect(0,0,w,h);
+    const tw=c.w/S.cols,th=c.h/S.rows,t=RATIOS[S.ratio];
+    slots.forEach(s=>{
+      const x=s.c*(cw+g),y=s.r*(ch+g);
+      if(s.type==="tile"){
+        let sx=c.x+s.c*tw,sy=c.y+s.r*th,sw=tw,sh=th;
+        if(t>0.75){const nw=sh*0.75;sx+=(sw-nw)/2;sw=nw;}
+        ctx.drawImage(S.img,sx,sy,sw,sh,x,y,cw,ch);
+      }else{
+        ctx.fillStyle=css("--bg");ctx.fillRect(x,y,cw,ch);
+        ctx.fillStyle=css("--muted");ctx.textAlign="center";ctx.textBaseline="middle";
+        ctx.font="600 "+Math.max(11,Math.round(cw/9))+"px 'Bricolage Grotesque',system-ui,sans-serif";
+        ctx.fillText(s.type==="filler"?"eigener Post":"älterer Post",x+cw/2,y+ch/2);
+        if(s.type==="filler")badge(x,y,s.order,false);
+      }
+    });
+    cv.classList.remove("grab");
+  }
+}
+
+function syncUI(){
+  $("colsOut").textContent=S.cols;$("rowsOut").textContent=S.rows;
+  document.querySelectorAll(".preset").forEach(b=>b.setAttribute("aria-pressed",(+b.dataset.c===S.cols&&+b.dataset.r===S.rows)+""));
+  document.querySelectorAll("#fmt button").forEach(b=>b.setAttribute("aria-pressed",(b.dataset.r===S.ratio)+""));
+  document.querySelectorAll("[data-view]").forEach(b=>b.setAttribute("aria-pressed",(b.dataset.view===S.view)+""));
+  const fillers=layout().filter(s=>s.type==="filler").length;
+  $("gridNote").textContent=S.cols<3
+    ?(fillers?"Das Profil hat immer 3 Spalten. Damit das Bild zusammenhängt, kommen "+fillers+" eigene Posts dazwischen. Die Liste zeigt, wann.":"Das Profil hat immer 3 Spalten. Rechts daneben steht dein bisher neuester Post.")
+    :"Klappt zuverlässig, weil jede Reihe genau 3 Posts hat.";
+  $("hint").textContent=S.view==="edit"?"Ziehen zum Verschieben. Die Zahl zeigt die Reihenfolge beim Posten.":"So erscheint es im Profil-Raster (3:4-Kacheln).";
+  if(S.img){const c=crop();const tw=c.w/S.cols;const w=$("warn");
+    if(tw<1000){w.hidden=false;w.textContent="Die Auflösung ist knapp: Jede Kachel wird von "+Math.round(tw)+" auf 1080 Pixel Breite hochgerechnet und kann etwas unscharf wirken.";}else w.hidden=true;}
+}
+
+function invalidate(){
+  if(S.tiles.length){S.tiles.forEach(t=>t.url&&URL.revokeObjectURL(t.url));S.tiles=[];renderList();}
+  syncUI();
+}
+function changed(){invalidate();draw();}
+
+// Ziehen + Pinch
+const ptrs=new Map();let pinch0=null;
+cv.addEventListener("pointerdown",e=>{if(S.view!=="edit"||!S.img)return;cv.setPointerCapture(e.pointerId);ptrs.set(e.pointerId,{x:e.clientX,y:e.clientY});if(ptrs.size===2){const [a,b]=[...ptrs.values()];pinch0={d:Math.hypot(a.x-b.x,a.y-b.y),z:S.zoom};}});
+cv.addEventListener("pointermove",e=>{
+  if(!ptrs.has(e.pointerId))return;
+  const prev=ptrs.get(e.pointerId);const cur={x:e.clientX,y:e.clientY};ptrs.set(e.pointerId,cur);
+  if(ptrs.size===2&&pinch0){const [a,b]=[...ptrs.values()];S.zoom=Math.min(4,Math.max(1,pinch0.z*Math.hypot(a.x-b.x,a.y-b.y)/pinch0.d));$("zoom").value=S.zoom;}
+  else if(ptrs.size===1){const c=crop();const k=c.w/cv.clientWidth;
+    S.cx-=(cur.x-prev.x)*k/S.img.naturalWidth;S.cy-=(cur.y-prev.y)*k/S.img.naturalHeight;}
+  invalidate();draw();
+});
+["pointerup","pointercancel"].forEach(ev=>cv.addEventListener(ev,e=>{ptrs.delete(e.pointerId);if(ptrs.size<2)pinch0=null;}));
+cv.addEventListener("wheel",e=>{if(S.view!=="edit"||!S.img)return;e.preventDefault();S.zoom=Math.min(4,Math.max(1,S.zoom*(e.deltaY<0?1.06:1/1.06)));$("zoom").value=S.zoom;invalidate();draw();},{passive:false});
+window.addEventListener("resize",draw);
+matchMedia("(prefers-color-scheme: dark)").addEventListener?.("change",draw);
+
+// Export
+function tileBlob(c,s){
+  const W=1080,H=Math.round(1080/RATIOS[S.ratio]);
+  const tc=document.createElement("canvas");tc.width=W;tc.height=H;
+  const t=tc.getContext("2d");t.imageSmoothingQuality="high";
+  const tw=c.w/S.cols,th=c.h/S.rows;
+  t.drawImage(S.img,c.x+s.c*tw,c.y+s.r*th,tw,th,0,0,W,H);
+  return new Promise(res=>tc.toBlob(res,"image/jpeg",0.93));
+}
+const pad=n=>String(n).padStart(2,"0");
+$("make").onclick=async()=>{
+  if(!S.img)return;$("make").disabled=true;$("make").textContent="Wird erstellt …";
+  const c=crop();const slots=layout().filter(s=>s.type!=="old").sort((a,b)=>a.order-b.order);
+  const out=[];
+  for(const s of slots){
+    if(s.type==="tile"){const blob=await tileBlob(c,s);out.push({...s,blob,url:URL.createObjectURL(blob),file:S.name+"_post-"+pad(s.order)+".jpg"});}
+    else out.push({...s});
+  }
+  S.tiles=out;$("make").disabled=false;$("make").textContent="Kacheln erstellen";renderList();
+  $("out").scrollIntoView({behavior:matchMedia("(prefers-reduced-motion: reduce)").matches?"auto":"smooth",block:"start"});
+};
+
+function renderList(){
+  const box=$("out"),ol=$("list");
+  if(!S.tiles.length){box.hidden=true;return;}
+  box.hidden=false;ol.innerHTML="";
+  const total=S.tiles.filter(t=>t.type==="tile").length;
+  S.tiles.forEach(t=>{
+    const li=document.createElement("li");
+    const num=document.createElement("span");num.className="num";num.textContent=t.order;li.appendChild(num);
+    if(t.type==="filler"){li.className="filler";const p=document.createElement("span");p.textContent="Hier einen eigenen, beliebigen Post veröffentlichen.";li.appendChild(p);}
+    else{
+      const img=document.createElement("img");img.src=t.url;img.alt="Kachel Reihe "+(t.r+1)+", Spalte "+(t.c+1);li.appendChild(img);
+      const m=document.createElement("span");m.className="meta";m.textContent="Reihe "+(t.r+1)+", Spalte "+(t.c+1);
+      const sm=document.createElement("small");sm.textContent=t.order===1?"Zuerst posten":(t.order===S.tiles.length?"Zuletzt posten":"");m.appendChild(sm);li.appendChild(m);
+      if(dl){const b=document.createElement("button");b.className="btn small";b.textContent="Speichern";b.onclick=()=>save(t.file,t.blob);li.appendChild(b);}
+      else li.appendChild(document.createElement("span"));
+    }
+    ol.appendChild(li);
+  });
+  $("zip").hidden=!dl||typeof JSZip==="undefined";
+  $("status").textContent=dl?"":"Direktes Speichern ist in dieser Ansicht nicht verfügbar. Halte ein Bild gedrückt (Handy) oder nutze Rechtsklick › Bild speichern unter.";
+}
+
+async function save(name,data){
+  const r=await shareOrDownload(name,data);
+  $("status").textContent=r==="abort"?"Abgebrochen.":"Gespeichert: "+name;
+}
+$("zip").onclick=async()=>{
+  if(!S.tiles.length||typeof JSZip==="undefined")return;
+  $("zip").disabled=true;$("status").textContent="ZIP wird erstellt …";
+  const z=new JSZip();
+  let txt="Reihenfolge beim Posten (Nummer 1 zuerst):\n";
+  S.tiles.forEach(t=>{if(t.type==="tile"){z.file(t.file,t.blob);txt+=pad(t.order)+"  "+t.file+"\n";}else txt+=pad(t.order)+"  eigener Post dazwischen\n";});
+  z.file("reihenfolge.txt",txt);
+  const blob=await z.generateAsync({type:"blob"});
+  $("zip").disabled=false;$("status").textContent="";
+  await save(S.name+"_raster.zip",blob);
+};
+
+syncUI();
+})();
+</script>
+</body>
+</html>
